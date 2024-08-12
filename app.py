@@ -1,16 +1,13 @@
-
-
 import os
 from flask import Flask, jsonify, request, url_for, redirect
 from flask_sqlalchemy import SQLAlchemy
-
 from sqlalchemy.sql import func
+from werkzeug.exceptions import BadRequest
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] =\
-        'sqlite:///' + os.path.join(basedir, 'database.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -20,56 +17,51 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     firstname = db.Column(db.String(20), nullable=False)
     lastname = db.Column(db.String(20), nullable=False)
-    email = db.Column(db.String(15), unique=True, nullable=False)
+    email = db.Column(db.String(50), unique=True, nullable=False)
     age = db.Column(db.Integer)
     image = db.Column(db.Text)
-    created_at = db.Column(db.DateTime(timezone=True),
-                           server_default=func.now())
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     bio = db.Column(db.Text)
 
     def __repr__(self):
-        return f'<Student {self.firstname}>'
+        return f'<User {self.firstname} {self.lastname}>'
 
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    users = User.query.all()  # Retrieve all users from the database
-    user_list = []  # Initialize an empty list to store user data as dictionaries
+    users = User.query.all()
+    user_list = [{
+        'id': user.id,
+        'firstname': user.firstname,
+        'lastname': user.lastname,
+        'email': user.email,
+        'age': user.age,
+        'image': user.image,
+        'created_at': user.created_at.isoformat(),
+        'bio': user.bio
+    } for user in users]
 
-    # Loop through the users and create a dictionary representation for each user
-    for user in users:
-        user_data = {
-            'id': user.id,
-            'firstname': user.firstname,
-            'lastname': user.lastname,
-            'email': user.email,
-            'age': user.age,
-            'image': user.image,
-            'created_at': user.created_at.isoformat(),  # Convert to ISO format for JSON serialization
-            'bio': user.bio
-            # Add other attributes as needed
-        }
-        user_list.append(user_data)  # Append the user data to the list
+    return jsonify(user_list)
 
-    return jsonify(user_list)  # Return the list of users as JSON
 
 @app.route('/api/users', methods=['POST'])
 def create_users():
     data = request.get_json()
-    firstname = data.get('firstname')
-    lastname = data.get('lastname')
-    email = data.get('email')
-    age = data.get('age')
-    image = data.get('image')
-    bio = data.get('bio')
+    if not data:
+        raise BadRequest('Invalid JSON data')
+
+    required_fields = ['firstname', 'lastname', 'email']
+    for field in required_fields:
+        if field not in data:
+            raise BadRequest(f'Missing required field: {field}')
 
     new_user = User(
-        firstname=firstname,
-        lastname=lastname,
-        email=email,
-        age=age,
-        image=image,
-        bio=bio
+        firstname=data['firstname'],
+        lastname=data['lastname'],
+        email=data['email'],
+        age=data.get('age'),
+        image=data.get('image'),
+        bio=data.get('bio')
     )
 
     db.session.add(new_user)
@@ -92,25 +84,18 @@ def edit_user(user_id):
     user = User.query.get_or_404(user_id)
     if request.method == 'POST':
         data = request.get_json()
-        firstname = data.get('firstname')
-        lastname = data.get('lastname')
-        email = data.get('email')
-        age = data.get('age')
-        image = data.get('image')
-        bio = data.get('bio')
+        if not data:
+            raise BadRequest('Invalid JSON data')
 
-        # Update the user's attributes
-        user.firstname = firstname
-        user.lastname = lastname
-        user.email = email
-        user.age = age
-        user.image = image
-        user.bio = bio
+        user.firstname = data.get('firstname', user.firstname)
+        user.lastname = data.get('lastname', user.lastname)
+        user.email = data.get('email', user.email)
+        user.age = data.get('age', user.age)
+        user.image = data.get('image', user.image)
+        user.bio = data.get('bio', user.bio)
 
-        # Commit changes to the database
         db.session.commit()
 
-        # Return a response indicating successful update (optional)
         return jsonify({
             'message': 'User updated successfully',
             'user': {
@@ -123,19 +108,12 @@ def edit_user(user_id):
                 'created_at': user.created_at.isoformat(),
                 'bio': user.bio
             }
-        }), 200  # Return status code 200 for success
-
-    # If the request method is GET, you may return the user details or perform other actions
+        }), 200
 
     return jsonify({
         'message': 'This endpoint supports POST method for editing user details.'
-    }), 405  # Return status code 405 for Method Not Allowed
+    }), 405
+
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-
-
-
-
